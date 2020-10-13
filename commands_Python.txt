@@ -1,0 +1,236 @@
+1º) Agrupar os .csv das reclamações, dos meses de 2019 e 2020
+2º) Selecionar apenas as áreas e assuntos (juntos) onde tem agências reguladoras
+- Água, Energia, Gás
+	- Assunto: Água e Esgoto (ANA)
+	- Assunto: Energia Elétrica (ANEEL)
+	- Assunto: Gás (ANP)
+- Alimentos (ANVISA)
+- Produtos de Telefonia e Informática / - Telecomunicações (ANATEL)
+- Saúde (ANS)
+- Transportes
+	- Assunto: Aéreo (ANAC)
+	- Assunto: Rodoviário estadual / intermunicipal (ANTT)
+3º) Criar dummies para "Resolvidas" e "Não Resolvidas" na categoria "Respondida" (que utiliza S ou N) e para "Avaliação" (que possui de conteúdo "Não avaliada", Não Resolvida" e "Resolvida")
+4º) Agrupar as categorias e transformá-las de textos para números
+
+df_final = pd.get_dummies(data, columns=all_vars, drop_first=True)
+
+5º) Reorganizar a coluna "Como Comprou Contratou"
+	- Catálogo
+	- Domicílio
+	- Ganhei de presente
+	- Internet
+	- Loja Física
+	- Não comprei / contratei
+	- SMS / Mensagem de texto
+	- Stand, feiras e eventos
+	- Telefone
+6º) Dummies para coluna "Situação": "Finalizada avaliada" ou "Finalizada não avaliada"
+7º) Drop as células vazias de "Nota do Consumidor"
+	- SERÁ QUE NÃO SERIA MELHOR SE PREVERMOS A NOTA DADA AO CONSUMIDOR E RELACIONAR ELA À REPUTAÇÃO DA AGÊNCIA?
+
+Eu preciso de dummies para:
+Sexo
+Atribuir valores a cada uma das empresas, na coluna "Nome Fantasia"
+Atribuir valores para a coluna "Segmentos de Mercado"
+A coluna "Área" é sempre a mesma (não tem que ter números ao invés de texto?)
+Jogar a coluna "Problema" fora
+Atribuir dummies para "Como Comprou Contratou", "Procurou Empresa", "Respondida" e "Situação" - OK
+
+
+# Load the libraries
+
+import pandas as pd
+import numpy as np
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import BaggingClassifier
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc
+
+# reading the data
+
+df = pd.read_csv('consolidado_2019.csv')
+df.head()
+
+# Cleaning the data - HOW DO WE CHANGE TEXT TO NUMBERS?
+
+df.dropna(how='any',inplace=True)
+
+# Getting the dummies for 'Respondida'
+
+df = pd.get_dummies(df)
+df.head()
+
+# We will use ten features:
+# We will compare 'Respondida' vs. the Others
+
+(PORÉM, SÓ CRIEI DUMMIES PARA 6 DELAS: 'Sexo','Avaliação Reclamação','Como Comprou Contratou','Procurou Empresa','Respondida','Situação')
+
+chosenColumns = ['Sexo_F', 'Sexo_M', 'Tempo Resposta', 'Avaliação Reclamação_Não Avaliada','Avaliação Reclamação_Não Resolvida','Como Comprou Contratou_Catálogo', 'Como Comprou Contratou_Domicílio','Como Comprou Contratou_Ganhei de presente','Como Comprou Contratou_Internet', 'Como Comprou Contratou_Loja física','Como Comprou Contratou_Não comprei / contratei','Como Comprou Contratou_SMS / Mensagem de texto','Como Comprou Contratou_Stand, feiras e eventos','Como Comprou Contratou_Telefone','Procurou Empresa_N','Procurou Empresa_S','Situação_Finalizada avaliada', 'Situação_Finalizada não avaliada','Nota do Consumidor']
+myX = df_tele[chosenColumns].values
+chosenOutcomes = ['Respondida_N', 'Respondida_S']
+myY = df_tele[chosenOutcomes].values
+
+# Splitting the dataset into train and test
+
+xTrain, xTest, yTrain, yTest = train_test_split(myX, myY, train_size=0.7, random_state=3)
+testSize = yTest.shape[0]
+
+
+#Decision Tree
+
+
+
+dt = DecisionTreeClassifier(max_depth=2)
+dt.fit(xTrain, yTrain.ravel())
+yPredDT = dt.predict(xTest) # predicting test data
+yPredDTroc = dt.predict_proba(xTest)[:,1]
+
+# computing error
+iterable = ((yPredDT[i] != yTest[i]) for i in range(0, testSize))
+errorDT = np.sum(np.fromiter(iterable,int))
+errorDTPCT = int(100*errorDT/testSize)
+hitRateDTPCT = 100 - errorDTPCT
+
+#printing
+print("----------Decision Tree Classfier----------")
+print(int(errorDT), "misclassified data out of", testSize)
+print("Error PCT: ",errorDTPCT,'%')
+print("Hit Rate:  ",hitRateDTPCT,'%')
+
+# Constructing the ROC curve and AUC
+fpr, tpr, thresh = roc_curve(yTest.ravel(), yPredDTroc.ravel())
+#fpr, tpr, thresh = roc_curve(yTest.ravel(), yPredDT.ravel())
+rocAuc = auc(fpr, tpr)
+
+# Plotting everything
+plt.figure()
+lw = 2
+plt.plot(fpr, tpr, color='darkorange',
+         lw=lw, label='ROC curve (area = %0.2f)' % rocAuc)
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.01])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic')
+plt.legend(loc="lower right")
+plt.show()
+
+
+# Random Forest
+
+rf = RandomForestClassifier(max_depth=4, n_estimators=100,bootstrap=True)
+rf.fit(xTrain, yTrain.ravel())
+yPredRF = rf.predict(xTest) # predicting test data
+yPredRFroc = rf.predict_proba(xTest)[:,1]
+
+# computing error
+iterable = ((yPredRF[i] != yTest[i]) for i in range(0, testSize))
+errorRF = np.sum(np.fromiter(iterable,int))
+errorRFPCT = int(100*errorRF/testSize)
+hitRateRFPCT = 100 - errorRFPCT
+
+#printing
+print("----------Random Forest Classfier----------")
+print(int(errorRF), "misclassified data out of", testSize)
+print("Error PCT: ",errorRFPCT,'%')
+print("Hit Rate:  ",hitRateRFPCT,'%')
+
+# Constructing the ROC curve and AUC
+fpr, tpr, thresh = roc_curve(yTest.ravel(), yPredRFroc.ravel())
+#fpr, tpr, thresh = roc_curve(yTest.ravel(), yPredRF.ravel())
+rocAuc = auc(fpr, tpr)
+
+# Plotting everything
+plt.figure()
+lw = 2
+plt.plot(fpr, tpr, color='darkorange',
+         lw=lw, label='ROC curve (area = %0.2f)' % rocAuc)
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.01])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic')
+plt.legend(loc="lower right")
+plt.show()
+
+# Gradient Boosting
+
+gb = GradientBoostingClassifier(max_depth=4, n_estimators=100, learning_rate=0.1)
+gb.fit(xTrain, yTrain.ravel())
+yPredGB = gb.predict(xTest) # predicting test data
+yPredGBroc = gb.predict_proba(xTest)[:,1]
+
+# computing error
+iterable = ((yPredGB[i] != yTest[i]) for i in range(0, testSize))
+errorGB = np.sum(np.fromiter(iterable,int))
+errorGBPCT = int(100*errorGB/testSize)
+hitRateGBPCT = 100 - errorGBPCT
+
+#printing
+print("----------Gradient Boosting Classfier----------")
+print(int(errorGB), "misclassified data out of", testSize)
+print("Error PCT: ",errorGBPCT,'%')
+print("Hit Rate:  ",hitRateGBPCT,'%')
+
+# Constructing the ROC curve and AUC
+fpr, tpr, thresh = roc_curve(yTest.ravel(), yPredGBroc.ravel())
+#fpr, tpr, thresh = roc_curve(yTest.ravel(), yPredGB.ravel())
+rocAuc = auc(fpr, tpr)
+
+# Plotting everything
+plt.figure()
+lw = 2
+plt.plot(fpr, tpr, color='darkorange',
+         lw=lw, label='ROC curve (area = %0.2f)' % rocAuc)
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.01])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic')
+plt.legend(loc="lower right")
+plt.show()
+
+
+
+#ALL THE CODES IN PYTHON
+
+
+import pandas as pd
+import numpy as np
+data=pd.read_csv('2020-07.csv', encoding='latin-1', error_bad_lines=False)
+data
+data2=pd.read_csv('2020-07.csv', sep=';', encoding='latin-1')
+data2
+data3=pd.read_csv('2020-05.csv', sep=';', encoding='latin-1')
+data3
+array=['2019-0'+str(x) for x in range(1,10)]+['2019-10','2019-11','2019-12']
+array
+
+partial=pd.read_csv('2019-01.csv', sep=';', encoding='latin-1')
+for dat in array[1:]:
+    caminho= dat +'.csv'
+    df_ = pd.read_csv(caminho, sep=';', encoding='latin-1')
+    partial= pd.concat([partial, df_])
+
+partial
+partial['Área'].unique()
+partial['Área']=[t if t!='Produtos de Telefonia e Informática' else 'Telecomunicações' for t in partial['Área'].values]
+partial['Área'].unique()
+df_tele=partial[partial['Área']=='Telecomunicações']
+df_tele.reset_index(inplace=True, drop=True)
+df_tele.to_csv('DadosTelecom2019_novo.csv')
+df_tele
+df_tele = pd.get_dummies(df_tele, columns=['Sexo','Avaliação Reclamação','Como Comprou Contratou','Procurou Empresa','Respondida','Situação']
+df_tele
+df_tele.drop(columns=['ï»¿RegiÃ£o', 'Faixa EtÃ¡ria','Data FinalizaÃ§Ã£o','Ãrea','SituaÃ§Ã£o','AvaliaÃ§Ã£o ReclamaÃ§Ã£o'])
+df_tele.dropna(subset=['Nota do Consumidor'], inplace=True)
+print(df_tele.columns)
+
+
